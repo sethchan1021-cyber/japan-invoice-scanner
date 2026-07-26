@@ -3,28 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>多語系發票速掃與上傳工具 / Invoice Scanner</title>
+    <title>多語系發票速掃與修正上傳工具</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
         .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .lang-switch { text-align: right; margin-bottom: 10px; }
-        .lang-btn { width: auto; padding: 5px 10px; background: #6c757d; font-size: 12px; display: inline-block; margin-left: 5px; }
+        .lang-btn { width: auto; padding: 5px 10px; background: #6c757d; font-size: 12px; display: inline-block; margin-left: 5px; color: white; border: none; border-radius: 3px; }
         h2 { text-align: center; color: #28a745; }
         video, canvas, #preview-img { width: 100%; border-radius: 5px; margin-top: 10px; }
-        button { width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        button:hover { background-color: #218838; }
+        button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        button:hover { background-color: #0056b3; }
         .upload-section { border: 2px dashed #ccc; padding: 20px; text-align: center; margin-top: 15px; border-radius: 5px; background: #fafafa; }
         .result-box { margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; }
         .form-group { margin-bottom: 10px; }
         .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
-        .form-group input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .form-group input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
         #status { font-weight: bold; color: #007bff; text-align: center; margin: 10px 0; }
+        #submit-btn { background-color: #28a745; margin-top: 15px; }
+        #submit-btn:hover { background-color: #218838; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- 語系切換區 -->
     <div class="lang-switch">
         <button class="lang-btn" onclick="switchLang('zh')">繁體中文</button>
         <button class="lang-btn" onclick="switchLang('en')">English</button>
@@ -32,41 +33,41 @@
 
     <h2 id="ui-title">多語系發票雲端速掃器</h2>
     
-    <!-- 實時相機功能 -->
     <video id="video" autoplay playsinline></video>
-    <button id="scan-btn">拍攝並進行雲端辨識 / Capture & Scan</button>
+    <button id="scan-btn" style="background-color: #007bff;">拍攝並進行雲端辨識</button>
     
-    <!-- 【新增】檔案上載功能 -->
     <div class="upload-section">
         <p id="ui-upload-text">或從相簿選擇圖片/PDF 上傳</p>
         <input type="file" id="file-input" accept="image/*,application/pdf">
     </div>
 
-    <!-- 圖片預覽區域 (上傳檔案時顯示) -->
     <img id="preview-img" style="display:none;" alt="Preview">
     <canvas id="canvas" style="display:none;"></canvas>
     
     <div id="status">準備就緒 / Ready</div>
 
-    <!-- 資料核對區 -->
+    <!-- 資料核對與手動輸入區 -->
     <div class="result-box">
-        <h3 id="ui-result-title">雲端回傳資料核對</h3>
+        <h3 id="ui-result-title">資料核對與修正 (可點擊欄位手動輸入)</h3>
         <div class="form-group">
             <label id="ui-label-loc">交易地點 (店名):</label>
-            <input type="text" id="res-location">
+            <input type="text" id="res-location" placeholder="請填入或修正店名">
         </div>
         <div class="form-group">
             <label id="ui-label-time">交易時間:</label>
-            <input type="text" id="res-time">
+            <input type="text" id="res-time" placeholder="YYYY-MM-DD">
         </div>
         <div class="form-group">
             <label id="ui-label-content">消費內容/品項:</label>
-            <input type="text" id="res-content">
+            <input type="text" id="res-content" value="旅程消費">
         </div>
         <div class="form-group">
             <label id="ui-label-price">費用 (金額):</label>
-            <input type="number" id="res-price">
+            <input type="number" id="res-price" placeholder="請填入或修正金額">
         </div>
+        
+        <!-- 【新增按鈕】點擊後才正式將資料上傳寫入 Google Sheets -->
+        <button id="submit-btn">確認匯出至 Google Excel</button>
     </div>
 </div>
 
@@ -79,30 +80,34 @@
     const fileInput = document.getElementById('file-input');
     const previewImg = document.getElementById('preview-img');
     const statusTxt = document.getElementById('status');
+    const submitBtn = document.getElementById('submit-btn');
 
-    // 語系字典設定
     const i18n = {
         zh: {
             title: "多語系發票雲端速掃器",
             uploadText: "或從相簿選擇圖片/PDF 上傳",
-            resultTitle: "雲端回傳資料核對",
+            resultTitle: "資料核對與修正 (可點擊欄位手動輸入)",
             labelLoc: "交易地點 (店名):",
             labelTime: "交易時間:",
             labelContent: "消費內容/品項:",
             labelPrice: "費用 (金額):",
             loading: "正在上傳影像至 Google 伺服器進行高速辨識...",
-            success: "雲端辨識成功！資料已寫入 Excel。"
+            success: "雲端辨識完成！請在下方檢查並補正未辨識出的內容。",
+            saving: "正在寫入 Google Excel...",
+            saveSuccess: "成功！資料已寫入 Google 試算表報告。"
         },
         en: {
             title: "Multi-lang Invoice Scanner",
             uploadText: "Or select image/PDF from album to upload",
-            resultTitle: "Verify Data From Cloud OCR",
+            resultTitle: "Verify & Edit Data Fields",
             labelLoc: "Location (Shop Name):",
             labelTime: "Transaction Time:",
             labelContent: "Content / Item:",
             labelPrice: "Expense (Amount):",
             loading: "Uploading image to Google server for high-speed OCR...",
-            success: "OCR Success! Data written to Excel."
+            success: "OCR Complete! Please verify or fill in the blank fileds below.",
+            saving: "Saving data to Google Sheets...",
+            saveSuccess: "Success! Data appended to your trip report."
         }
     };
 
@@ -122,9 +127,9 @@
     // 啟動相機
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
         .then(stream => { video.srcObject = stream; })
-        .catch(err => { console.log("Camera access blocked or not supported on this device."); });
+        .catch(err => { console.log("Camera initializing..."); });
 
-    // 處理文字辨識後的欄位填充
+    // 傳送給後端進行辨識 (不直接寫入)
     function sendToOCR(base64Data) {
         statusTxt.innerText = i18n[currentLang].loading;
         
@@ -145,41 +150,65 @@
             }
         })
         .catch(err => {
-            statusTxt.innerText = "處理完成，請至 Google 試算表確認紀錄！";
+            statusTxt.innerText = "連線失敗，請確認 GAS 網址部署是否正確。";
         });
     }
 
-    // 行動 A：點擊拍照辨識
+    // 觸發拍照
     scanBtn.addEventListener('click', () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        
         previewImg.style.display = "none";
         sendToOCR(imageDataUrl);
     });
 
-    // 行動 B：選取外部檔案上傳辨識
+    // 觸發檔案上傳
     fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = function(event) {
             const base64Data = event.target.result;
-            
-            // 如果是圖片，則在畫面上顯示預覽圖
             if (file.type.startsWith('image/')) {
                 previewImg.src = base64Data;
                 previewImg.style.display = "block";
             }
-            
-            // 送往雲端進行 OCR
             sendToOCR(base64Data);
         };
         reader.readAsDataURL(file);
+    });
+
+    // 【新增邏輯】按下確認匯出按鈕後，才打包前端目前欄位內的值送去寫入
+    submitBtn.addEventListener('click', () => {
+        statusTxt.innerText = i18n[currentLang].saving;
+
+        const payload = {
+            action: "save",
+            location: document.getElementById('res-location').value,
+            time: document.getElementById('res-time').value,
+            content: document.getElementById('res-content').value,
+            price: document.getElementById('res-price').value
+        };
+
+        fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(res => {
+            if(res.status === "success") {
+                statusTxt.innerText = i18n[currentLang].saveSuccess;
+                alert(i18n[currentLang].saveSuccess);
+            } else {
+                statusTxt.innerText = "儲存失敗: " + res.message;
+            }
+        })
+        .catch(err => {
+            statusTxt.innerText = "已要求寫入，請至試算表確認資料是否存在。";
+        });
     });
 </script>
 
