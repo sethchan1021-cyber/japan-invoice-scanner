@@ -3,14 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>極速版 日本發票消費報告工具</title>
+    <title>多語系發票速掃與上傳工具 / Invoice Scanner</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f7f6; color: #333; }
         .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .lang-switch { text-align: right; margin-bottom: 10px; }
+        .lang-btn { width: auto; padding: 5px 10px; background: #6c757d; font-size: 12px; display: inline-block; margin-left: 5px; }
         h2 { text-align: center; color: #28a745; }
-        video, canvas { width: 100%; border-radius: 5px; margin-top: 10px; }
+        video, canvas, #preview-img { width: 100%; border-radius: 5px; margin-top: 10px; }
         button { width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; }
         button:hover { background-color: #218838; }
+        .upload-section { border: 2px dashed #ccc; padding: 20px; text-align: center; margin-top: 15px; border-radius: 5px; background: #fafafa; }
         .result-box { margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; }
         .form-group { margin-bottom: 10px; }
         .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
@@ -21,88 +24,162 @@
 <body>
 
 <div class="container">
-    <h2>日本發票雲端速掃器</h2>
+    <!-- 語系切換區 -->
+    <div class="lang-switch">
+        <button class="lang-btn" onclick="switchLang('zh')">繁體中文</button>
+        <button class="lang-btn" onclick="switchLang('en')">English</button>
+    </div>
+
+    <h2 id="ui-title">多語系發票雲端速掃器</h2>
     
+    <!-- 實時相機功能 -->
     <video id="video" autoplay playsinline></video>
-    <button id="scan-btn">拍攝並進行雲端高效辨識</button>
+    <button id="scan-btn">拍攝並進行雲端辨識 / Capture & Scan</button>
     
+    <!-- 【新增】檔案上載功能 -->
+    <div class="upload-section">
+        <p id="ui-upload-text">或從相簿選擇圖片/PDF 上傳</p>
+        <input type="file" id="file-input" accept="image/*,application/pdf">
+    </div>
+
+    <!-- 圖片預覽區域 (上傳檔案時顯示) -->
+    <img id="preview-img" style="display:none;" alt="Preview">
     <canvas id="canvas" style="display:none;"></canvas>
     
-    <div id="status">準備就緒 (已啟用 Google 雲端加速)</div>
+    <div id="status">準備就緒 / Ready</div>
 
+    <!-- 資料核對區 -->
     <div class="result-box">
-        <h3>雲端回傳資料核對</h3>
+        <h3 id="ui-result-title">雲端回傳資料核對</h3>
         <div class="form-group">
-            <label>交易地點 (店名):</label>
+            <label id="ui-label-loc">交易地點 (店名):</label>
             <input type="text" id="res-location">
         </div>
         <div class="form-group">
-            <label>交易時間:</label>
+            <label id="ui-label-time">交易時間:</label>
             <input type="text" id="res-time">
         </div>
         <div class="form-group">
-            <label>消費內容/品項:</label>
+            <label id="ui-label-content">消費內容/品項:</label>
             <input type="text" id="res-content">
         </div>
         <div class="form-group">
-            <label>費用 (JPY ￥):</label>
+            <label id="ui-label-price">費用 (金額):</label>
             <input type="number" id="res-price">
         </div>
-        <p style="font-size: 12px; color: #666;">* 資料已同步自動寫入 Google Sheets，您可以在上方修改不準確的欄位後再次處理。</p>
     </div>
 </div>
 
 <script>
-    // 請在此處貼上您更新部署後的 Google Apps Script 網址
-    const GAS_WEB_APP_URL = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE";
+    const GAS_WEB_APP_URL = "YOUR_GOOGLE_APPS_SCRIPT_URL_HERE"; // 請替換為您的 GAS 網址
 
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const scanBtn = document.getElementById('scan-btn');
+    const fileInput = document.getElementById('file-input');
+    const previewImg = document.getElementById('preview-img');
     const statusTxt = document.getElementById('status');
 
-    // 啟動後置相機
+    // 語系字典設定
+    const i18n = {
+        zh: {
+            title: "多語系發票雲端速掃器",
+            uploadText: "或從相簿選擇圖片/PDF 上傳",
+            resultTitle: "雲端回傳資料核對",
+            labelLoc: "交易地點 (店名):",
+            labelTime: "交易時間:",
+            labelContent: "消費內容/品項:",
+            labelPrice: "費用 (金額):",
+            loading: "正在上傳影像至 Google 伺服器進行高速辨識...",
+            success: "雲端辨識成功！資料已寫入 Excel。"
+        },
+        en: {
+            title: "Multi-lang Invoice Scanner",
+            uploadText: "Or select image/PDF from album to upload",
+            resultTitle: "Verify Data From Cloud OCR",
+            labelLoc: "Location (Shop Name):",
+            labelTime: "Transaction Time:",
+            labelContent: "Content / Item:",
+            labelPrice: "Expense (Amount):",
+            loading: "Uploading image to Google server for high-speed OCR...",
+            success: "OCR Success! Data written to Excel."
+        }
+    };
+
+    let currentLang = 'zh';
+
+    function switchLang(lang) {
+        currentLang = lang;
+        document.getElementById('ui-title').innerText = i18n[lang].title;
+        document.getElementById('ui-upload-text').innerText = i18n[lang].uploadText;
+        document.getElementById('ui-result-title').innerText = i18n[lang].resultTitle;
+        document.getElementById('ui-label-loc').innerText = i18n[lang].labelLoc;
+        document.getElementById('ui-label-time').innerText = i18n[lang].labelTime;
+        document.getElementById('ui-label-content').innerText = i18n[lang].labelContent;
+        document.getElementById('ui-label-price').innerText = i18n[lang].labelPrice;
+    }
+
+    // 啟動相機
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
         .then(stream => { video.srcObject = stream; })
-        .catch(err => { statusTxt.innerText = "無法存取相機，請檢查 HTTPS 設定。"; });
+        .catch(err => { console.log("Camera access blocked or not supported on this device."); });
 
-    // 拍照並直接送往雲端處理
-    scanBtn.addEventListener('click', () => {
-        statusTxt.innerText = "正在上傳影像至 Google 伺服器進行高速辨識...";
+    // 處理文字辨識後的欄位填充
+    function sendToOCR(base64Data) {
+        statusTxt.innerText = i18n[currentLang].loading;
         
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        // 擷取 Base64 圖片資料
-        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8); // 壓縮率 0.8 加快傳輸
-
-        // 將圖片封裝發送給 GAS 后端
         fetch(GAS_WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ image: imageDataUrl })
+            body: JSON.stringify({ image: base64Data })
         })
         .then(response => response.json())
         .then(res => {
             if(res.status === "success") {
-                statusTxt.innerText = "雲端辨識成功！資料已同步寫入 Excel。";
-                
-                // 呈現雲端辨識並解析出來的結果
+                statusTxt.innerText = i18n[currentLang].success;
                 document.getElementById('res-location').value = res.data.location;
                 document.getElementById('res-time').value = res.data.time;
                 document.getElementById('res-content').value = res.data.content;
                 document.getElementById('res-price').value = res.data.price;
             } else {
-                statusTxt.innerText = "錯誤: " + res.message;
+                statusTxt.innerText = "Error: " + res.message;
             }
         })
         .catch(err => {
-            // 由於 mode: 'no-cors' 在某些舊環境可能封鎖回應，改用標準 fetch
-            // 若因為 CORS 導致看不到文字，但通常資料此時已經順利寫入試算表了
-            statusTxt.innerText = "處理完成，請檢查您的 Google 試算表確認紀錄！";
-            console.log(err);
+            statusTxt.innerText = "處理完成，請至 Google 試算表確認紀錄！";
         });
+    }
+
+    // 行動 A：點擊拍照辨識
+    scanBtn.addEventListener('click', () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        previewImg.style.display = "none";
+        sendToOCR(imageDataUrl);
+    });
+
+    // 行動 B：選取外部檔案上傳辨識
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const base64Data = event.target.result;
+            
+            // 如果是圖片，則在畫面上顯示預覽圖
+            if (file.type.startsWith('image/')) {
+                previewImg.src = base64Data;
+                previewImg.style.display = "block";
+            }
+            
+            // 送往雲端進行 OCR
+            sendToOCR(base64Data);
+        };
+        reader.readAsDataURL(file);
     });
 </script>
 
